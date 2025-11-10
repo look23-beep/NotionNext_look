@@ -298,9 +298,3 @@ img {
   @keyframes l1 {
   0% {background-position: right}
 }
-
-/* 隐藏阅读次数 */
-.post-meta .busuanzi-value,
-.post-meta #busuanzi_value_page_pv {
-  display: none !important;
-}

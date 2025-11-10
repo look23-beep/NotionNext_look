@@ -10,7 +10,7 @@ import useAdjustStyle from '@/hooks/useAdjustStyle'
 import { GlobalContextProvider } from '@/lib/global'
 import { getBaseLayoutByTheme } from '@/themes/theme'
 import { useRouter } from 'next/router'
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useEffect } from 'react'
 import { getQueryParam } from '../lib/utils'
 
 // 各种扩展插件 这个要阻塞引入
@@ -42,6 +42,20 @@ const MyApp = ({ Component, pageProps }) => {
     )
   }, [route])
 
+  // 🚨 手机端检测逻辑
+  useEffect(() => {
+    const isMobile = /Mobi|Android|iPhone|iPad|iPod|Windows Phone/i.test(navigator.userAgent)
+    if (!isMobile) {
+      document.body.innerHTML = `
+        <div style="text-align:center;margin-top:50px;font-size:18px;">
+          🚫 请使用手机访问本站<br><br>
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(window.location.href)}" alt="二维码" /><br>
+          <small>请使用手机扫码进入</small>
+        </div>
+      `
+    }
+  }, [])
+
   // 整体布局
   const GLayout = useCallback(
     props => {
@@ -61,6 +75,7 @@ const MyApp = ({ Component, pageProps }) => {
       <ExternalPlugins {...pageProps} />
     </GlobalContextProvider>
   )
+
   return (
     <>
       {enableClerk ? (

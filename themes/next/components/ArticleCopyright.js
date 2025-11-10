@@ -37,3 +37,8 @@ export default function ArticleCopyright({ author, url }) {
     </section>
   )
 }
+
+/* 隐藏 NotionNext next 主题文章底部的转载声明 */
+section.dark\:text-gray-300.mt-6 {
+  display: none !important;
+}

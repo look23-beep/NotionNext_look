@@ -71,4 +71,19 @@ const BLOG = {
   UUID_REDIRECT: process.env.UUID_REDIRECT || false
 }
 
+// 设备访问控制 - 阻止电脑端访问
+const ENABLE_PC_BLOCK = process.env.NEXT_PUBLIC_ENABLE_PC_BLOCK || false // 设置为 true 启用电脑端访问阻止
+
+// 设备检测函数
+const isMobileDevice = () => {
+  if (typeof window === 'undefined') return false
+  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+    navigator.userAgent
+  )
+}
+
+// 导出设备检测函数
+BLOG.ENABLE_PC_BLOCK = ENABLE_PC_BLOCK
+BLOG.isMobileDevice = isMobileDevice
+
 module.exports = BLOG

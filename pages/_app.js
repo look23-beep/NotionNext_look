@@ -19,12 +19,15 @@ import ExternalPlugins from '@/components/ExternalPlugins'
 import SEO from '@/components/SEO'
 import { zhCN } from '@clerk/localizations'
 import dynamic from 'next/dynamic'
+// import { ClerkProvider } from '@clerk/nextjs'
 const ClerkProvider = dynamic(() =>
   import('@clerk/nextjs').then(m => m.ClerkProvider)
 )
 
 /**
  * App挂载DOM 入口文件
+ * @param {*} param0
+ * @returns
  */
 const MyApp = ({ Component, pageProps }) => {
   useAdjustStyle()
@@ -44,32 +47,41 @@ const MyApp = ({ Component, pageProps }) => {
 
   useEffect(() => {
     const checkEnvironment = () => {
-      // 1. UA 检测
+      // 1. UA 检测 (基础防御)
       const ua = navigator.userAgent
       const isMobileUA = /Mobi|Android|iPhone|iPad|iPod|Windows Phone/i.test(ua)
       
-      // 2. 触摸屏检测
+      // 2. 触摸屏检测 (F12 手机模式默认有 touch，但普通改 UA 插件通常不会伪造 touch)
       const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0
 
-      // 3. 🌟 针对 F12 模拟器的必杀技：内外宽度差检测
-      // 正常手机上 outerWidth 和 innerWidth 几乎一致。
-      // F12 模拟器下，innerWidth 是手机宽度，而 outerWidth 是你整个电脑屏幕/大窗口的宽度
-      const isEmulator = window.outerWidth > 0 && (window.outerWidth - window.innerWidth > 150)
+      // 3. 屏幕物理像素与逻辑分辨率检测 (拦截强行缩小浏览器窗口的行为)
+      const isSmallScreen = window.innerWidth <= 1024
+      
+      // 4. 平台底层检测 (即使 F12 伪装了 UA，navigator.platform 有时依然会暴露 MacIntel 或 Win32)
+      // 注意：该 API 已被标记为废弃，但在旧版和部分现代浏览器中依然有效，适合做辅助判断
+      const platform = navigator?.platform || ''
+      const isDesktopPlatform = /MacIntel|Win32|Win64|Linux x86_64/.test(platform)
 
-      // 综合判断逻辑：
-      // 如果没有移动端UA，或者没有触摸屏(单纯缩小PC浏览器)，或者是模拟器(开启F12)，一律拦截！
-      if (!isMobileUA || !hasTouch || isEmulator) {
+      // 综合判断逻辑：如果不是移动端 UA，或者没有触摸功能，或者是明显的 PC 平台，就拦截
+      // (特例: iPad 较新版本 UA 可能像 Mac，但具有 touch，这里放行 touch + smallScreen)
+      if (!isMobileUA || !hasTouch || (isDesktopPlatform && !hasTouch)) {
         setIsBlocked(true)
         setCurrentUrl(window.location.href)
       } else {
-        setIsBlocked(false)
+        // 如果用户在模拟器中放大了窗口，也拦截
+        if (!isSmallScreen) {
+          setIsBlocked(true)
+          setCurrentUrl(window.location.href)
+        } else {
+          setIsBlocked(false)
+        }
       }
     }
 
     // 初始检测
     checkEnvironment()
 
-    // 监听窗口改变，实时防护
+    // 监听窗口改变 (防止用户先在小窗口打开，然后最大化)
     window.addEventListener('resize', checkEnvironment)
     return () => window.removeEventListener('resize', checkEnvironment)
   }, [])
@@ -85,13 +97,12 @@ const MyApp = ({ Component, pageProps }) => {
 
   const enableClerk = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
   
-  // 🚨 渲染拦截页面
+  // 🚨 如果被拦截，直接返回拦截页面，不挂载任何原页面 DOM
   if (isBlocked) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', textAlign: 'center', fontSize: '18px', backgroundColor: '#f9f9f9', fontFamily: 'sans-serif' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', textAlign: 'center', fontSize: '18px', backgroundColor: '#f9f9f9' }}>
         <div style={{ background: '#fff', padding: '40px', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
           <h2 style={{ margin: '0 0 20px 0', color: '#333' }}>🚫 请使用手机访问本站</h2>
-          <p style={{ color: '#E53E3E', fontSize: '14px', marginBottom: '20px', fontWeight: 'bold' }}>检测到桌面端或模拟器环境</p>
           {currentUrl && (
             <img 
               src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(currentUrl)}`} 
@@ -99,7 +110,7 @@ const MyApp = ({ Component, pageProps }) => {
               style={{ display: 'block', margin: '0 auto 20px auto' }}
             />
           )}
-          <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>请使用手机真实环境扫码进入</p>
+          <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>请使用手机微信或浏览器扫码进入</p>
         </div>
       </div>
     )

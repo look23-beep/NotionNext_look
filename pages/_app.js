@@ -24,41 +24,25 @@ const ClerkProvider = dynamic(() =>
 )
 
 /**
- * 多层设备检测工具
- * 服务端已由 middleware.js 完成 UA 预筛，前端专注于行为特征检测
+ * 设备检测 - 白名单模式
+ * 返回 true 表示确认是移动端，允许放行
  */
-function detectDesktop() {
-  let reason = null
-
-  // 1. 触摸支持
+function isMobileDevice() {
   const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0
-
-  // 2. 屏幕尺寸
   const isSmallScreen = window.innerWidth <= 1024
-
-  // 3. 设备像素比（桌面显示器通常是 1，移动设备 2-3）
+  const ua = navigator.userAgent
+  const isMobileUA = /Mobi|Android|iPhone|iPad|iPod/i.test(ua)
   const dpr = window.devicePixelRatio || 1
-
-  // 4. 连接类型
   const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection
   const isCellular = connection?.type === 'cellular'
 
-  // 无触摸 → 桌面
-  if (!hasTouch) {
-    reason = 'no_touch'
-  }
+  // 必须同时满足：移动端 UA + 触摸支持 + 小屏幕
+  const passes = isMobileUA && hasTouch && isSmallScreen
 
-  // 大屏幕 + 低 DPR + 非蜂窝网络 → 桌面显示器
-  if (!isSmallScreen && dpr === 1 && !isCellular) {
-    reason = 'desktop_display'
-  }
+  // 放宽：iPad（可能无 Mobi 标识）有触摸 + 小屏/蜂窝网络也放行
+  const ipadPass = hasTouch && isSmallScreen && (dpr >= 2 || isCellular)
 
-  // 大屏幕 + 无触摸 → 横屏 iPad Pro 可能有触摸但屏幕大，单独处理
-  if (!isSmallScreen && !hasTouch) {
-    reason = 'large_screen_no_touch'
-  }
-
-  return { blocked: !!reason, reason }
+  return passes || ipadPass
 }
 
 /**
@@ -76,77 +60,42 @@ const MyApp = ({ Component, pageProps }) => {
     )
   }, [route])
 
-  // 拦截状态
-  const [isBlocked, setIsBlocked] = useState(false)
-  const [blockReason, setBlockReason] = useState('')
+  // 关键改动：初始状态 = "待检测"，页面内容在检测通过前不渲染
+  const [deviceChecked, setDeviceChecked] = useState(false)
+  const [isAllowed, setIsAllowed] = useState(false)
   const [currentUrl, setCurrentUrl] = useState('')
 
   useEffect(() => {
-    let mouseDetected = false
-    let wheelDetected = false
-    let blockTimer = null
+    // 服务端 middleware 已经拦过一轮，这里做前端补刀
+    const allowed = isMobileDevice()
+    setIsAllowed(allowed)
+    setCurrentUrl(window.location.href)
+    setDeviceChecked(true)
 
-    // 行为检测：鼠标移动是桌面端最难以隐藏的痕迹
-    const detectMouseMove = (e) => {
-      // movementX/Y 不为 0 说明是物理鼠标移动
-      if (e.movementX !== 0 || e.movementY !== 0) {
-        mouseDetected = true
-        applyBlock('mouse_behavior')
+    // 如果放行了，挂载行为监听 — 一旦检测到桌面端行为立即拦截
+    if (allowed) {
+      const block = () => {
+        setIsAllowed(false)
+        setDeviceChecked(true)
       }
-    }
 
-    const detectWheel = () => {
-      wheelDetected = true
-      applyBlock('wheel_behavior')
-    }
-
-    // 右键菜单
-    const detectContextMenu = () => {
-      applyBlock('context_menu')
-    }
-
-    const applyBlock = (reason) => {
-      if (!isBlocked) {
-        setBlockReason(reason)
-        setCurrentUrl(window.location.href)
-        setIsBlocked(true)
+      const handleMouseMove = (e) => {
+        if (e.movementX !== 0 || e.movementY !== 0) block()
       }
-    }
-
-    // 初始静态检测
-    const result = detectDesktop()
-    if (result.blocked) {
-      applyBlock(result.reason)
-    }
-
-    // 挂载行为监听
-    window.addEventListener('mousemove', detectMouseMove, { passive: true })
-    window.addEventListener('wheel', detectWheel, { passive: true })
-    window.addEventListener('contextmenu', detectContextMenu)
-
-    // 窗口大小变化
-    const handleResize = () => {
-      const r = detectDesktop()
-      if (r.blocked) {
-        applyBlock(r.reason)
+      const handleWheel = () => block()
+      const handleResize = () => {
+        if (!isMobileDevice()) block()
       }
-    }
-    window.addEventListener('resize', handleResize)
 
-    // 延迟二次检测：给改 UA 插件 3 秒时间"稳定"，再测一次环境指纹
-    blockTimer = setTimeout(() => {
-      const r = detectDesktop()
-      if (r.blocked) {
-        applyBlock('delayed_' + r.reason)
+      window.addEventListener('mousemove', handleMouseMove, { passive: true })
+      window.addEventListener('wheel', handleWheel, { passive: true })
+      window.addEventListener('resize', handleResize)
+
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove)
+        window.removeEventListener('wheel', handleWheel)
+        window.removeEventListener('resize', handleResize)
       }
-    }, 3000)
-
-    return () => {
-      window.removeEventListener('mousemove', detectMouseMove)
-      window.removeEventListener('wheel', detectWheel)
-      window.removeEventListener('contextmenu', detectContextMenu)
-      window.removeEventListener('resize', handleResize)
-      clearTimeout(blockTimer)
     }
   }, [])
 
@@ -161,7 +110,13 @@ const MyApp = ({ Component, pageProps }) => {
 
   const enableClerk = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 
-  if (isBlocked) {
+  // 检测未完成 — 不渲染任何内容（空白，避免页面闪现）
+  if (!deviceChecked) {
+    return null
+  }
+
+  // 检测未通过 — 拦截页
+  if (!isAllowed) {
     return (
       <div style={{
         display: 'flex', flexDirection: 'column', alignItems: 'center',

@@ -110,7 +110,7 @@ const MyApp = ({ Component, pageProps }) => {
               style={{ display: 'block', margin: '0 auto 20px auto' }}
             />
           )}
-          <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>请使用手机微信或浏览器扫码进入</p>
+          <p style={{ color: '#666', fontSize: '14px', margin: 0 }}>请使用手机浏览器扫码进入</p>
         </div>
       </div>
     )
